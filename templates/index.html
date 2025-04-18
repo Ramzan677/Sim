@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pak Sim Data</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(90deg, #141e30, #243b55);
+            background-size: 400% 400%;
+            animation: backgroundAnimate 8s infinite;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            min-height: 100vh;
+            position: relative;
+        }
+        /* Add other CSS styles here */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Pak Sim Data</h1>
+        <form method="post">
+            <input type="text" name="mobile" placeholder="Enter mobile number without 0">
+            <input type="submit" value="Search">
+        </form>
+        {% if data %}
+            <div class="result">
+                <pre>
+                    <code>
+                        {{ data }}
+                    </code>
+                </pre>
+                <button class="copy-button" onclick="copyResponse()">Copy</button>
+            </div>
+        {% elif error %}
+            <p>{{ error }}</p>
+        {% endif %}
+    </div>
+
+    <script>
+        function copyResponse() {
+            const responseText = document.querySelector('.result').innerText;
+            navigator.clipboard.writeText(responseText).then(() => {
+                alert('Response copied to clipboard!');
+            }).catch(err => {
+                alert('Failed to copy text: ', err);
+            });
+        }
+    </script>
+</body>
+              </html>
