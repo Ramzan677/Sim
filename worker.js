@@ -1,18 +1,16 @@
 export default {
   async fetch(request, env, ctx) {
-    // 1. Setup CORS headers so you can use this API anywhere
+    // 1. Setup CORS headers
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     };
 
-    // Handle preflight requests (Browser checks)
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // 2. Get the Number from the URL (e.g., ?number=923017496496)
     const url = new URL(request.url);
     const mobileNumber = url.searchParams.get("number");
 
@@ -20,7 +18,7 @@ export default {
       return new Response(
         JSON.stringify({
           success: false,
-          message: "Please provide a number. Example: ?number=923017496496",
+          message: "Please provide a number. Example: ?number=3338570120",
           developed_by: "Ramzan Ahsan"
         }),
         { headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -28,13 +26,12 @@ export default {
     }
 
     try {
-      // --- STEP A: Search by Number to get CNIC ---
-      // We use the native 'fetch' instead of axios
-      const response1 = await fetch(`https://sychosimdatabase.vercel.app/api/lookup/${mobileNumber}`);
+      // --- STEP A: Search by Number to get CNIC from new API ---
+      const response1 = await fetch(`https://fam-official.serv00.net/api/database.php?number=${mobileNumber}`);
       const data1 = await response1.json();
 
-      // Check if data exists
-      if (!data1.success || !data1.results || data1.results.length === 0) {
+      // Check if records exist in the new structure
+      if (!data1.success || !data1.data || !data1.data.records || data1.data.records.length === 0) {
         return new Response(
           JSON.stringify({
             success: false,
@@ -45,14 +42,14 @@ export default {
         );
       }
 
-      // Extract CNIC
-      const targetCNIC = data1.results[0].cnic;
+      // Extract CNIC from the first record found
+      const targetCNIC = data1.data.records[0].cnic;
 
       if (!targetCNIC) {
         return new Response(
           JSON.stringify({
             success: false,
-            message: "CNIC not found in the record.",
+            message: "CNIC not found in the database records.",
             developed_by: "Ramzan Ahsan"
           }),
           { headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -60,13 +57,15 @@ export default {
       }
 
       // --- STEP B: Search by CNIC to get Multi Data ---
-      const response2 = await fetch(`https://sychosimdatabase.vercel.app/api/lookup/${targetCNIC}`);
+      // We use the same API endpoint as it supports both Number and CNIC
+      const response2 = await fetch(`https://fam-official.serv00.net/api/database.php?number=${targetCNIC}`);
       const data2 = await response2.json();
 
       // --- STEP C: Filter and Format Data ---
-      const cleanResults = data2.results.map(item => ({
-        number: item.mobile,
-        name: item.name,
+      // Mapping the new keys (full_name, phone) to your standard format (name, number)
+      const cleanResults = data2.data.records.map(item => ({
+        number: item.phone,
+        name: item.full_name,
         cnic: item.cnic,
         address: item.address,
         developed_by: "Ramzan Ahsan"
@@ -78,10 +77,10 @@ export default {
           success: true,
           query_number: mobileNumber,
           linked_cnic: targetCNIC,
-          total_sims: cleanResults.length,
+          total_sims: data2.data.records_count,
           data: cleanResults,
           credit: "Developed by Ramzan Ahsan"
-        }, null, 2), // The '2' makes the JSON look pretty
+        }, null, 2), 
         { headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
 
