@@ -12,39 +12,42 @@ export default {
     const mobileNumber = url.searchParams.get("number");
 
     if (!mobileNumber) {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        message: "Please provide a number. Example: ?number=923016486486" 
-      }), {
+      return new Response(JSON.stringify({ success: false, message: "Provide a number." }), {
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
     }
 
     try {
-      // Fetching from the Sychosim Database Vercel API
-      const apiUrl = `https://sychosimdatabase.vercel.app/api/lookup?query=${mobileNumber}`;
-      const response = await fetch(apiUrl);
-      const result = await response.json();
+      // --- STEP 1: Get the CNIC for the provided number ---
+      const searchUrl = `https://sychosimdatabase.vercel.app/api/lookup?query=${mobileNumber}`;
+      const res1 = await fetch(searchUrl);
+      const data1 = await res1.json();
 
-      // IMPORTANT: The API uses "results" (as seen in your sample)
-      const records = result.results;
-
-      // If results is missing or empty, return false
-      if (!records || !Array.isArray(records) || records.length === 0) {
-        return new Response(JSON.stringify({ 
-          success: false, 
-          message: "No Data Found for this number",
-          developed_by: "Ramzan Ahsan"
-        }), {
+      if (!data1.results || data1.results.length === 0) {
+        return new Response(JSON.stringify({ success: false, message: "No record found for this number." }), {
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });
       }
 
-      // Mapping keys exactly: mobile, name, cnic, address
-      const cleanResults = records.map(item => ({
-        number: item.mobile || mobileNumber,
+      // Extract the CNIC from the first result
+      const targetCNIC = data1.results[0].cnic;
+
+      if (!targetCNIC || targetCNIC === "N/A") {
+        return new Response(JSON.stringify({ success: false, message: "CNIC not found for this number." }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+
+      // --- STEP 2: Use that CNIC to find MULTI DATA (All SIMs) ---
+      const multiUrl = `https://sychosimdatabase.vercel.app/api/lookup?query=${targetCNIC}`;
+      const res2 = await fetch(multiUrl);
+      const data2 = await res2.json();
+
+      // --- STEP 3: Format and Return All Records ---
+      const allRecords = (data2.results || []).map(item => ({
+        number: item.mobile || item.number || "N/A",
         name: item.name || "N/A",
-        cnic: item.cnic || "N/A",
+        cnic: item.cnic || targetCNIC,
         address: item.address || "N/A",
         developed_by: "Ramzan Ahsan"
       }));
@@ -53,19 +56,16 @@ export default {
         JSON.stringify({
           success: true,
           query_number: mobileNumber,
-          total_records: result.results_count || cleanResults.length,
-          data: cleanResults,
+          linked_cnic: targetCNIC,
+          total_sims_found: allRecords.length,
+          data: allRecords,
           credit: "Developed by Ramzan Ahsan"
         }, null, 2),
         { headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
 
     } catch (error) {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        message: "API Connection Error", 
-        error: error.message 
-      }), {
+      return new Response(JSON.stringify({ success: false, error: error.message }), {
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
     }
