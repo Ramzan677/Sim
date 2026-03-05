@@ -12,42 +12,47 @@ export default {
     const mobileNumber = url.searchParams.get("number");
 
     if (!mobileNumber) {
-      return new Response(JSON.stringify({ success: false, message: "Add ?number=0333xxxxxxx" }), {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        message: "Please provide a number. Example: ?number=923016486486" 
+      }), {
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
     }
 
     try {
-      // The API often prefers the 92 prefix or local format; this query remains flexible.
+      // The exact API endpoint you requested
       const apiUrl = `https://sychosimdatabase.vercel.app/api/lookup?query=${mobileNumber}`;
       const response = await fetch(apiUrl);
       const result = await response.json();
 
-      // Locate the data array regardless of where the API nests it
-      let rawData = result.data || result.records || (Array.isArray(result) ? result : null);
+      // Based on your sample, the data is inside the "results" array
+      const records = result.results;
 
-      if (!rawData || (Array.isArray(rawData) && rawData.length === 0)) {
-        return new Response(JSON.stringify({ success: false, message: "No Data Found" }), {
+      if (!records || !Array.isArray(records) || records.length === 0) {
+        return new Response(JSON.stringify({ 
+          success: false, 
+          message: "No Data Found in Sychox Database",
+          developed_by: "Ramzan Ahsan"
+        }), {
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });
       }
 
-      const records = Array.isArray(rawData) ? rawData : [rawData];
-
+      // Mapping keys: name, cnic, address, and mobile (from API)
       const cleanResults = records.map(item => ({
-        // This 'Deep Mapping' checks for all common naming variations used by Vercel APIs
-        number: item.mobile || item.number || item.phone || item.Mobile || mobileNumber,
-        name: item.name || item.full_name || item.FullName || item["Full Name"] || "N/A",
-        cnic: item.cnic || item.nic || item.CNIC || item["ID Card"] || "N/A",
-        address: item.address || item.location || item.Address || "N/A",
-        operator: item.operator || item.network || item.Operator || "N/A",
+        number: item.mobile || mobileNumber,
+        name: item.name || "N/A",
+        cnic: item.cnic || "N/A",
+        address: item.address || "N/A",
         developed_by: "Ramzan Ahsan"
       }));
 
       return new Response(
         JSON.stringify({
           success: true,
-          total: cleanResults.length,
+          query: mobileNumber,
+          results_count: result.results_count || cleanResults.length,
           data: cleanResults,
           credit: "Developed by Ramzan Ahsan"
         }, null, 2),
@@ -55,7 +60,11 @@ export default {
       );
 
     } catch (error) {
-      return new Response(JSON.stringify({ success: false, error: error.message }), {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        message: "API Error", 
+        error: error.message 
+      }), {
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
     }
