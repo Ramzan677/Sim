@@ -6,82 +6,58 @@ export default {
       "Access-Control-Allow-Headers": "Content-Type",
     };
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
-    }
+    if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
     const url = new URL(request.url);
     const mobileNumber = url.searchParams.get("number");
 
     if (!mobileNumber) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: "Please provide a number. Example: ?number=0333xxxxxxx",
-          developed_by: "Ramzan Ahsan"
-        }),
-        { headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return new Response(JSON.stringify({ success: false, message: "Add ?number=0333xxxxxxx" }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
     }
 
     try {
-      // Clean the number (remove leading zero or add 92 if needed, though usually, simple query works)
-      const query = mobileNumber.trim();
-      
-      const apiUrl = `https://sychosimdatabase.vercel.app/api/lookup?query=${query}`;
+      // The API often prefers the 92 prefix or local format; this query remains flexible.
+      const apiUrl = `https://sychosimdatabase.vercel.app/api/lookup?query=${mobileNumber}`;
       const response = await fetch(apiUrl);
       const result = await response.json();
 
-      // DEBUG: If no data field exists, the structure might be direct
-      let rawData = result.data || result.records || result;
+      // Locate the data array regardless of where the API nests it
+      let rawData = result.data || result.records || (Array.isArray(result) ? result : null);
 
-      // Ensure we are working with an array
-      if (!Array.isArray(rawData)) {
-        rawData = rawData && typeof rawData === 'object' && Object.keys(rawData).length > 0 ? [rawData] : [];
+      if (!rawData || (Array.isArray(rawData) && rawData.length === 0)) {
+        return new Response(JSON.stringify({ success: false, message: "No Data Found" }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
       }
 
-      if (rawData.length === 0) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            message: "No record found in the database.",
-            developed_by: "Ramzan Ahsan"
-          }),
-          { headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
-      }
+      const records = Array.isArray(rawData) ? rawData : [rawData];
 
-      // Map the data using flexible key detection
-      const cleanResults = rawData.map(item => ({
-        number: item.mobile || item.number || item.phone || mobileNumber,
-        name: item.name || item.full_name || item.FullName || "N/A",
-        cnic: item.cnic || item.nic || item.id_card || "N/A",
-        address: item.address || item.location || "N/A",
-        operator: item.operator || item.network || "N/A",
+      const cleanResults = records.map(item => ({
+        // This 'Deep Mapping' checks for all common naming variations used by Vercel APIs
+        number: item.mobile || item.number || item.phone || item.Mobile || mobileNumber,
+        name: item.name || item.full_name || item.FullName || item["Full Name"] || "N/A",
+        cnic: item.cnic || item.nic || item.CNIC || item["ID Card"] || "N/A",
+        address: item.address || item.location || item.Address || "N/A",
+        operator: item.operator || item.network || item.Operator || "N/A",
         developed_by: "Ramzan Ahsan"
       }));
 
       return new Response(
         JSON.stringify({
           success: true,
-          query_number: mobileNumber,
-          total_records: cleanResults.length,
+          total: cleanResults.length,
           data: cleanResults,
           credit: "Developed by Ramzan Ahsan"
-        }, null, 2), 
+        }, null, 2),
         { headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
 
     } catch (error) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: "API Source Error.",
-          error: error.message,
-          developed_by: "Ramzan Ahsan"
-        }),
-        { headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return new Response(JSON.stringify({ success: false, error: error.message }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
     }
   },
 };
