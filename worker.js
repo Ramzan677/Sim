@@ -21,25 +21,26 @@ export default {
     }
 
     try {
-      // The exact API endpoint you requested
+      // Fetching from the Sychosim Database Vercel API
       const apiUrl = `https://sychosimdatabase.vercel.app/api/lookup?query=${mobileNumber}`;
       const response = await fetch(apiUrl);
       const result = await response.json();
 
-      // Based on your sample, the data is inside the "results" array
+      // IMPORTANT: The API uses "results" (as seen in your sample)
       const records = result.results;
 
+      // If results is missing or empty, return false
       if (!records || !Array.isArray(records) || records.length === 0) {
         return new Response(JSON.stringify({ 
           success: false, 
-          message: "No Data Found in Sychox Database",
+          message: "No Data Found for this number",
           developed_by: "Ramzan Ahsan"
         }), {
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });
       }
 
-      // Mapping keys: name, cnic, address, and mobile (from API)
+      // Mapping keys exactly: mobile, name, cnic, address
       const cleanResults = records.map(item => ({
         number: item.mobile || mobileNumber,
         name: item.name || "N/A",
@@ -51,8 +52,8 @@ export default {
       return new Response(
         JSON.stringify({
           success: true,
-          query: mobileNumber,
-          results_count: result.results_count || cleanResults.length,
+          query_number: mobileNumber,
+          total_records: result.results_count || cleanResults.length,
           data: cleanResults,
           credit: "Developed by Ramzan Ahsan"
         }, null, 2),
@@ -62,7 +63,7 @@ export default {
     } catch (error) {
       return new Response(JSON.stringify({ 
         success: false, 
-        message: "API Error", 
+        message: "API Connection Error", 
         error: error.message 
       }), {
         headers: { "Content-Type": "application/json", ...corsHeaders }
