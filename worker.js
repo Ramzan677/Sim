@@ -6,73 +6,97 @@ export default {
       "Access-Control-Allow-Headers": "Content-Type",
     };
 
-    if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+    // CORS preflight रिक्वेस्ट को हैंडल करें
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders });
+    }
 
     const url = new URL(request.url);
     let mobileNumber = url.searchParams.get("number");
 
     if (!mobileNumber) {
       return new Response(JSON.stringify({ success: false, message: "Provide a number." }), {
+        status: 400,
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
     }
 
-    // --- नंबर क्लीनिंग लॉजिक (ताकि फ्रंटएंड पर कोई फर्क न पड़े) ---
-    // सभी स्पेस या डैश हटाएं
+    // --- नंबर क्लीनिंग लॉजिक ---
     let cleanNumber = mobileNumber.replace(/\D/g, ""); 
     
-    // अगर नंबर 923 से शुरू हो रहा है तो 92 हटाकर 3 से शुरू करें
     if (cleanNumber.startsWith("92")) {
       cleanNumber = cleanNumber.substring(2);
-    }
-    // अगर नंबर 03 से शुरू हो रहा है तो 0 हटाकर 3 से शुरू करें
-    else if (cleanNumber.startsWith("0")) {
+    } else if (cleanNumber.startsWith("0")) {
       cleanNumber = cleanNumber.substring(1);
     }
 
     try {
-      // --- STEP 1: नई API से डेटा प्राप्त करें (बिना 0 या 92 के, सिर्फ 3xx से शुरू) ---
+      // --- STEP 1: नई API से डेटा प्राप्त करें ---
       const searchUrl = `https://amscript.xyz/PublicApi/Siminfo.php?number=${cleanNumber}`;
-      const res = await fetch(searchUrl);
+      
+      // 5 सेकंड का टाइमआउट सेट करें ताकि वर्कर अटका न रहे
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const res = await fetch(searchUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      // अगर API रिस्पॉन्स कोड 200-299 के बीच नहीं है
+      if (!res.ok) {
+        throw new Error(`Third-party API responded with status ${res.status}`);
+      }
+
       const data = await res.json();
 
-      // अगर डेटा नहीं मिला या स्टेटस फेल है
+      // --- STEP 2: रिस्पॉन्स वैलिडेशन ---
+      // 'fail' स्टेटस या खाली डेटा होने पर सुरक्षित रूप से हैंडल करें
       if (!data || data.status === "fail" || !data.data) {
         return new Response(JSON.stringify({ success: false, message: "No record found for this number." }), {
+          status: 404,
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });
       }
 
-      // --- STEP 2: नई API के रिस्पॉन्स को आपके पुराने फॉर्मेट में ढालना ---
-      // नोट: चूंकि नई API का रिस्पॉन्स स्ट्रक्चर थोड़ा अलग हो सकता है, 
-      // हम उसे एरे (Array) में मैप कर रहे हैं ताकि पुराना फ्रंटएंड बिना किसी बदलाव के चले।
-      
-      const apiData = data.data;
+      // अगर डेटा एरे के रूप में आता है तो पहला एलिमेंट लें, नहीं तो डायरेक्ट ऑब्जेक्ट यूज़ करें
+      const apiData = Array.isArray(data.data) ? data.data[0] : data.data;
+
+      if (!apiData) {
+        return new Response(JSON.stringify({ success: false, message: "No record found for this number." }), {
+          status: 404,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+
       const targetCNIC = apiData.cnic || "N/A";
 
       const allRecords = [{
-        number: apiData.phone || mobileNumber, // ओरिजिनल इनपुट नंबर या मिला हुआ नंबर
+        number: apiData.phone || mobileNumber,
         name: apiData.name || "N/A",
         cnic: targetCNIC,
         address: apiData.address || "N/A",
         developed_by: "Ramzan Ahsan"
       }];
 
-      // --- STEP 3: पुराना सेम टू सेम JSON रिस्पॉन्स वापस भेजें ---
+      // --- STEP 3: पुराना फॉर्मेट JSON रिस्पॉन्स ---
       return new Response(
         JSON.stringify({
           success: true,
-          query_number: mobileNumber, // फ्रंटएंड को ओरिजिनल इनपुट ही दिखेगा
+          query_number: mobileNumber,
           linked_cnic: targetCNIC,
           total_sims_found: allRecords.length,
           data: allRecords,
           credit: "Developed by Ramzan Ahsan"
         }, null, 2),
-        { headers: { "Content-Type": "application/json", ...corsHeaders } }
+        { 
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders } 
+        }
       );
 
     } catch (error) {
-      return new Response(JSON.stringify({ success: false, error: error.message }), {
+      // एरर मैसेज को सुरक्षित रूप से फ्रंटएंड पर भेजें
+      return new Response(JSON.stringify({ success: false, error: error.message || "Internal Server Error" }), {
+        status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
     }
